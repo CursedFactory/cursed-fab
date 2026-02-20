@@ -1,6 +1,17 @@
 name: PR Stage - Implement
 
 on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to run implementation against"
+        required: true
+        type: string
+      task:
+        description: "Implementation task to execute"
+        required: false
+        default: "Apply the next concrete implementation step for this PR."
+        type: string
   issue_comment:
     types: [created]
 
@@ -13,23 +24,38 @@ permissions:
 jobs:
   implement:
     if: >
-      github.event.issue.pull_request != null &&
-      startsWith(github.event.comment.body, '/agent-implement') &&
+      github.event_name == 'workflow_dispatch' ||
       (
-        github.event.comment.author_association == 'OWNER' ||
-        github.event.comment.author_association == 'MEMBER' ||
-        github.event.comment.author_association == 'COLLABORATOR'
+        github.event.issue.pull_request != null &&
+        startsWith(github.event.comment.body, '/agent-implement') &&
+        (
+          github.event.comment.author_association == 'OWNER' ||
+          github.event.comment.author_association == 'MEMBER' ||
+          github.event.comment.author_association == 'COLLABORATOR'
+        )
       )
     runs-on: ubuntu-latest
     steps:
       - name: Resolve PR metadata
         id: pr
         uses: actions/github-script@v7
+        env:
+          PR_NUMBER_INPUT: ${{ inputs.pr_number || '' }}
+          TASK_INPUT: ${{ inputs.task || '' }}
         with:
           script: |
-            const prNumber = context.payload.issue.number;
-            const rawCommand = (context.payload.comment.body || '').trim();
-            const commandText = rawCommand.replace(/^\/agent-implement\s*/i, '').trim();
+            const isDispatch = context.eventName === 'workflow_dispatch';
+            const prNumber = isDispatch
+              ? Number(process.env.PR_NUMBER_INPUT)
+              : context.payload.issue.number;
+
+            const rawCommand = isDispatch
+              ? (process.env.TASK_INPUT || '').trim()
+              : (context.payload.comment.body || '').trim();
+
+            const commandText = isDispatch
+              ? rawCommand
+              : rawCommand.replace(/^\/agent-implement\s*/i, '').trim();
 
             const { data: pr } = await github.rest.pulls.get({
               owner: context.repo.owner,
@@ -44,7 +70,7 @@ jobs:
             core.setOutput('pr_title', pr.title || 'Untitled PR');
             core.setOutput('pr_body', pr.body || '');
             core.setOutput('command_text', commandText || 'Apply the next concrete implementation step for this PR.');
-            core.setOutput('comment_id', String(context.payload.comment.id));
+            core.setOutput('comment_id', isDispatch ? 'manual-dispatch' : String(context.payload.comment.id));
 
       - name: Skip fork PRs
         if: ${{ steps.pr.outputs.same_repo != 'true' }}

@@ -1,6 +1,12 @@
 name: Issue Stage - Develop Kickoff
 
 on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to bootstrap into Develop stage"
+        required: true
+        type: string
   issues:
     types: [labeled]
 
@@ -11,10 +17,10 @@ permissions:
 
 jobs:
   kickoff:
-    if: ${{ github.event.issue.pull_request == null && github.event.label.name == 'Develop' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'issues' && github.event.issue.pull_request == null && github.event.label.name == 'Develop') }}
     runs-on: ubuntu-latest
     env:
-      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      ISSUE_NUMBER: ${{ inputs.issue_number || github.event.issue.number }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -24,13 +30,20 @@ jobs:
       - name: Create kickoff plan document
         id: kickoff
         uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ env.ISSUE_NUMBER }}
         with:
           script: |
             const fs = require('node:fs');
             const path = require('node:path');
 
-            const issue = context.payload.issue;
-            const issueNumber = issue.number;
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+            });
+
             const safeSlug = (issue.title || 'work')
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, '-')
