@@ -143,12 +143,18 @@ jobs:
           PLAN_PATH: ${{ steps.kickoff.outputs.plan_path }}
           ISSUE_NUMBER: ${{ env.ISSUE_NUMBER }}
         run: |
+          plan_tmp_file="$(mktemp)"
+          cp "$PLAN_PATH" "$plan_tmp_file"
+
           if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
             git fetch origin "$BRANCH_NAME:$BRANCH_NAME"
             git checkout "$BRANCH_NAME"
           else
             git checkout -b "$BRANCH_NAME"
           fi
+
+          mkdir -p "$(dirname "$PLAN_PATH")"
+          cp "$plan_tmp_file" "$PLAN_PATH"
 
           git add "$PLAN_PATH"
 
