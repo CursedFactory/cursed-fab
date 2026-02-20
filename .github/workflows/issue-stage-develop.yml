@@ -145,6 +145,7 @@ jobs:
         run: |
           plan_tmp_file="$(mktemp)"
           cp "$PLAN_PATH" "$plan_tmp_file"
+          rm -f "$PLAN_PATH"
 
           if git ls-remote --heads origin "$BRANCH_NAME" | grep -q "$BRANCH_NAME"; then
             git fetch origin "$BRANCH_NAME:$BRANCH_NAME"
