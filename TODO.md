@@ -3,6 +3,7 @@
 ## Agent Runtime Backlog
 
 - [x] Guard issue demo workflow against missing credentials and stalled OpenCode runs
+- [x] Add OpenRouter credential/model override path in issue demo workflow
 - [ ] Setup `ocx` profiles for core agent roles and stages
 - [ ] Implement profile launcher that selects profile by action/event type and stage
   - [ ] Map issue planning flow (example: `issue_planning`)

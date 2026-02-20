@@ -111,8 +111,14 @@ Model provider credential secrets:
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `OPENCODE_API_KEY`
+- `OPENROUTER_API_KEY`
 
 If none are configured, the workflow posts a guidance message instead of attempting a model call.
+
+Optional model override:
+
+- `OPENCODE_MODEL` repository variable (for example: `openrouter/openai/gpt-5-mini`)
+- `workflow_dispatch` input `model`
 
 ## Planning and Templates
 
@@ -143,4 +149,10 @@ To manually run the issue demo workflow for a specific issue:
 
 ```bash
 gh workflow run issue-demo.yml -f issue_number=123 -f issue_body="$(gh issue view 123 --json body -q .body)"
+```
+
+To force an OpenRouter model on manual dispatch:
+
+```bash
+gh workflow run issue-demo.yml -f issue_number=123 -f issue_body="$(gh issue view 123 --json body -q .body)" -f model="openrouter/openai/gpt-5-mini"
 ```
