@@ -11,6 +11,11 @@ on:
         description: "Issue body to pass to opencode run"
         required: true
         type: string
+      model:
+        description: "Optional model override in provider/model format"
+        required: false
+        default: ""
+        type: string
   issues:
     types: [opened, edited]
 
@@ -25,6 +30,7 @@ jobs:
     env:
       ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
       ISSUE_BODY: ${{ github.event.issue.body || inputs.issue_body }}
+      OPENCODE_MODEL: ${{ inputs.model || vars.OPENCODE_MODEL || '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,6 +46,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENCODE_MODEL: ${{ env.OPENCODE_MODEL }}
         run: |
           mkdir -p .tmp
           printf '%s\n' "$ISSUE_BODY" > .tmp/issue-body.txt
@@ -48,10 +56,18 @@ jobs:
             printf '%s\n' 'No issue description provided. Please summarize this issue and propose next steps.' > .tmp/issue-body.txt
           fi
 
-          if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENCODE_API_KEY:-}" ]; then
+          if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENCODE_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
             {
               printf '%s\n\n' 'No model provider credentials are configured for this repository.'
-              printf '%s\n' 'Set at least one secret (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENCODE_API_KEY`) and rerun the workflow.'
+              printf '%s\n' 'Set at least one secret (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, or `OPENROUTER_API_KEY`) and rerun the workflow.'
+            } > .tmp/opencode-response.txt
+            exit 0
+          fi
+
+          if [ -n "${OPENCODE_MODEL:-}" ] && [ "${OPENCODE_MODEL#openrouter/}" != "${OPENCODE_MODEL}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
+            {
+              printf '%s\n\n' "OpenCode model override requires OpenRouter credentials: ${OPENCODE_MODEL}"
+              printf '%s\n' 'Set `OPENROUTER_API_KEY` or choose a non-OpenRouter model override.'
             } > .tmp/opencode-response.txt
             exit 0
           fi
@@ -61,8 +77,10 @@ jobs:
             -e OPENAI_API_KEY \
             -e ANTHROPIC_API_KEY \
             -e OPENCODE_API_KEY \
+            -e OPENROUTER_API_KEY \
+            -e OPENCODE_MODEL \
             devbox \
-            bash -lc 'ISSUE_DESC="$(cat /workspace/.tmp/issue-body.txt)" && opencode run "$ISSUE_DESC"' \
+            bash -lc 'ISSUE_DESC="$(cat /workspace/.tmp/issue-body.txt)" && if [ -n "${OPENCODE_MODEL:-}" ]; then opencode run --model "$OPENCODE_MODEL" "$ISSUE_DESC"; else opencode run "$ISSUE_DESC"; fi' \
             > .tmp/opencode-response.txt 2>&1
           exit_code=$?
           set -e

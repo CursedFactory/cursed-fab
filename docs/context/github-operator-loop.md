@@ -30,6 +30,19 @@ gh secret set OPENAI_API_KEY
 gh secret set ANTHROPIC_API_KEY
 # or
 gh secret set OPENCODE_API_KEY
+# or
+gh secret set OPENROUTER_API_KEY
+```
+
+4. Optional: set a repository-level default model override:
+
+```bash
+gh api --method POST repos/CursedFactory/cursed-fab/actions/variables \
+  -f name='OPENCODE_MODEL' \
+  -f value='openrouter/openai/gpt-5-mini' \
+  || gh api --method PATCH repos/CursedFactory/cursed-fab/actions/variables/OPENCODE_MODEL \
+    -f name='OPENCODE_MODEL' \
+    -f value='openrouter/openai/gpt-5-mini'
 ```
 
 ## Issue to Branch
@@ -91,6 +104,12 @@ Run against a specific issue body using `workflow_dispatch`:
 
 ```bash
 gh workflow run issue-demo.yml -f issue_number=<issue-number> -f issue_body="$(gh issue view <issue-number> --json body -q .body)"
+```
+
+Run with explicit model override:
+
+```bash
+gh workflow run issue-demo.yml -f issue_number=<issue-number> -f issue_body="$(gh issue view <issue-number> --json body -q .body)" -f model="openrouter/openai/gpt-5-mini"
 ```
 
 Inspect the latest runs:
