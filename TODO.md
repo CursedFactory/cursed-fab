@@ -5,6 +5,11 @@
 - [x] Guard issue demo workflow against missing credentials and stalled OpenCode runs
 - [x] Add OpenRouter credential/model override path in issue demo workflow
 - [x] Prebuild devbox image in dedicated workflow and reuse it in issue-demo with build fallback
+- [x] Split stage automation into issue-thread, develop-kickoff, and PR-implementation workflows
+- [x] Add develop-stage automation to write kickoff plan docs and open draft PRs
+- [x] Add PR command workflow (`/agent-implement`) that can push implementation commits
+- [x] Improve issue reply formatting with structured prompt contract (`REPLY.md`) and clean comment output
+- [x] Remove unused default labels and add label governance workflow
 - [ ] Setup `ocx` profiles for core agent roles and stages
 - [ ] Implement profile launcher that selects profile by action/event type and stage
   - [ ] Map issue planning flow (example: `issue_planning`)

@@ -1,0 +1,289 @@
+name: PR Stage - Implement
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  packages: read
+
+jobs:
+  implement:
+    if: >
+      github.event.issue.pull_request != null &&
+      startsWith(github.event.comment.body, '/agent-implement') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = context.payload.issue.number;
+            const rawCommand = (context.payload.comment.body || '').trim();
+            const commandText = rawCommand.replace(/^\/agent-implement\s*/i, '').trim();
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber,
+            });
+
+            core.setOutput('pr_number', String(pr.number));
+            core.setOutput('head_ref', pr.head.ref);
+            core.setOutput('base_ref', pr.base.ref);
+            core.setOutput('same_repo', String(pr.head.repo.full_name === `${context.repo.owner}/${context.repo.repo}`));
+            core.setOutput('pr_title', pr.title || 'Untitled PR');
+            core.setOutput('pr_body', pr.body || '');
+            core.setOutput('command_text', commandText || 'Apply the next concrete implementation step for this PR.');
+            core.setOutput('comment_id', String(context.payload.comment.id));
+
+      - name: Skip fork PRs
+        if: ${{ steps.pr.outputs.same_repo != 'true' }}
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+        with:
+          script: |
+            const prNumber = Number(process.env.PR_NUMBER);
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: [
+                '### Implementation Update',
+                'This automation only pushes commits to branches in the base repository.',
+                'Fork-based PR detected; skipping implementation run.',
+              ].join('\n'),
+            });
+
+      - name: Checkout PR branch
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pr.outputs.head_ref }}
+          fetch-depth: 0
+
+      - name: Resolve devbox image reference
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        run: echo "DEVBOX_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cursed-fab-devbox:main" >> "$GITHUB_ENV"
+
+      - name: Pull prebuilt devbox image (fallback to build)
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        run: |
+          if docker pull "$DEVBOX_IMAGE"; then
+            echo "Using prebuilt image: $DEVBOX_IMAGE"
+          else
+            echo "Prebuilt image not available; building devbox locally"
+            docker compose build devbox
+          fi
+
+      - name: Build implementation prompt
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          PR_TITLE: ${{ steps.pr.outputs.pr_title }}
+          PR_BODY: ${{ steps.pr.outputs.pr_body }}
+          COMMAND_TEXT: ${{ steps.pr.outputs.command_text }}
+        with:
+          script: |
+            const fs = require('node:fs');
+
+            let replyContract = '';
+            try {
+              replyContract = fs.readFileSync('REPLY.md', 'utf8').trim();
+            } catch {
+              replyContract = '- Keep updates concise and implementation-focused.';
+            }
+
+            const prompt = [
+              'You are implementing code changes for a pull request.',
+              'Apply the requested task directly in the repository.',
+              'Use existing code style and keep changes focused.',
+              '',
+              `PR #${process.env.PR_NUMBER}: ${process.env.PR_TITLE}`,
+              '',
+              'PR description:',
+              process.env.PR_BODY || 'No PR description provided.',
+              '',
+              'Requested implementation task:',
+              process.env.COMMAND_TEXT,
+              '',
+              'Reply formatting contract:',
+              replyContract,
+            ].join('\n');
+
+            fs.mkdirSync('.tmp', { recursive: true });
+            fs.writeFileSync('.tmp/pr-implement-prompt.txt', `${prompt}\n`, 'utf8');
+
+      - name: Run implementation with OpenCode
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        id: run
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL || '' }}
+        run: |
+          if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENCODE_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
+            printf '%s\n' 'No model provider credentials are configured for this repository.' > .tmp/opencode-response.txt
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ -n "${OPENCODE_MODEL:-}" ] && [ "${OPENCODE_MODEL#openrouter/}" != "${OPENCODE_MODEL}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
+            printf '%s\n' "Configured model requires OPENROUTER_API_KEY: ${OPENCODE_MODEL}" > .tmp/opencode-response.txt
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          set +e
+          timeout 240s docker run --rm \
+            -u "$(id -u):$(id -g)" \
+            -v "$PWD:/workspace" \
+            -w /workspace \
+            -e OPENAI_API_KEY \
+            -e ANTHROPIC_API_KEY \
+            -e OPENCODE_API_KEY \
+            -e OPENROUTER_API_KEY \
+            -e OPENCODE_MODEL \
+            "$DEVBOX_IMAGE" \
+            bash -lc 'PROMPT="$(cat /workspace/.tmp/pr-implement-prompt.txt)" && if [ -n "${OPENCODE_MODEL:-}" ]; then opencode run --format json --model "$OPENCODE_MODEL" "$PROMPT"; else opencode run --format json "$PROMPT"; fi' \
+            > .tmp/opencode-events.jsonl 2>&1
+          exit_code=$?
+          set -e
+
+          if [ "$exit_code" -ne 0 ]; then
+            if [ "$exit_code" -eq 124 ]; then
+              printf '%s\n' 'Implementation run timed out after 240 seconds.' > .tmp/opencode-response.txt
+            else
+              printf '%s\n' "Implementation run failed with exit code ${exit_code}." > .tmp/opencode-response.txt
+            fi
+          fi
+
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Extract implementation summary
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        run: |
+          if [ -f .tmp/opencode-response.txt ] && [ -s .tmp/opencode-response.txt ]; then
+            exit 0
+          fi
+
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const sourcePath = '.tmp/opencode-events.jsonl';
+          const targetPath = '.tmp/opencode-response.txt';
+
+          let textChunks = [];
+          if (fs.existsSync(sourcePath)) {
+            const lines = fs.readFileSync(sourcePath, 'utf8').split('\n').filter(Boolean);
+            for (const line of lines) {
+              try {
+                const event = JSON.parse(line);
+                if (event.type === 'text') {
+                  const text = (event.part && event.part.text ? event.part.text : '').trim();
+                  if (text) {
+                    textChunks.push(text);
+                  }
+                }
+              } catch {
+                // Ignore non-JSON lines.
+              }
+            }
+          }
+
+          const summary = textChunks.join('\n\n').trim() || 'OpenCode produced no structured implementation summary.';
+          fs.writeFileSync(targetPath, `${summary}\n`, 'utf8');
+          NODE
+
+      - name: Commit and push implementation changes
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        id: commit
+        env:
+          PR_BRANCH: ${{ steps.pr.outputs.head_ref }}
+          COMMENT_ID: ${{ steps.pr.outputs.comment_id }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          git commit -m "Agent // Apply implementation command from PR comment #${COMMENT_ID}"
+          git push origin "$PR_BRANCH"
+
+          git show --name-only --pretty='' HEAD > .tmp/changed-files.txt
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Post implementation update comment
+        if: ${{ steps.pr.outputs.same_repo == 'true' }}
+        uses: actions/github-script@v7
+        env:
+          PR_NUMBER: ${{ steps.pr.outputs.pr_number }}
+          COMMAND_TEXT: ${{ steps.pr.outputs.command_text }}
+          CHANGED: ${{ steps.commit.outputs.changed }}
+          OPENCODE_MODEL: ${{ vars.OPENCODE_MODEL || 'default' }}
+        with:
+          script: |
+            const fs = require('node:fs');
+
+            const prNumber = Number(process.env.PR_NUMBER);
+            const commandText = process.env.COMMAND_TEXT || '';
+            const changed = process.env.CHANGED === 'true';
+            const model = process.env.OPENCODE_MODEL || 'default';
+
+            let summary = 'No implementation summary was generated.';
+            try {
+              summary = fs.readFileSync('.tmp/opencode-response.txt', 'utf8').trim() || summary;
+            } catch {
+              // keep default summary
+            }
+
+            let changedFiles = '';
+            if (changed) {
+              try {
+                const files = fs
+                  .readFileSync('.tmp/changed-files.txt', 'utf8')
+                  .split('\n')
+                  .map((line) => line.trim())
+                  .filter(Boolean)
+                  .map((line) => `- \`${line}\``);
+                changedFiles = files.join('\n');
+              } catch {
+                changedFiles = '- File list unavailable';
+              }
+            }
+
+            const body = [
+              '### Implementation Update',
+              `**Command:** \`${commandText}\``,
+              changed ? '**Applied changes:**' : '**Applied changes:** none',
+              changed ? changedFiles : '- No repository changes were detected during this run.',
+              '',
+              summary,
+              '',
+              '---',
+              `_Model: \`${model}\` · Workflow: \`pr-stage-implement.yml\`_`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body,
+            });

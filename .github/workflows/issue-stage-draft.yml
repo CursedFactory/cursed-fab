@@ -1,0 +1,30 @@
+name: Issue Stage - Draft Label
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  add-draft-label:
+    if: >
+      github.event.issue.pull_request == null &&
+      !contains(github.event.issue.labels.*.name, 'Draft') &&
+      !contains(github.event.issue.labels.*.name, 'Planning') &&
+      !contains(github.event.issue.labels.*.name, 'Develop') &&
+      !contains(github.event.issue.labels.*.name, 'Review') &&
+      !contains(github.event.issue.labels.*.name, 'Accepted')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add Draft label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              labels: ['Draft'],
+            });

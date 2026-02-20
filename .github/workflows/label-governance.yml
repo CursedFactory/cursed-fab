@@ -1,0 +1,69 @@
+name: Label Governance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/label-governance.yml
+
+permissions:
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync repository labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const desiredLabels = [
+              { name: 'Draft', color: 'BFD4F2', description: 'Issue created, no planning yet' },
+              { name: 'Planning', color: 'FEF2C0', description: 'Issue is in planning iteration' },
+              { name: 'Develop', color: 'C2E0C6', description: 'Implementation in progress' },
+              { name: 'Review', color: 'F9D0C4', description: 'Work is in review' },
+              { name: 'Accepted', color: 'C5DEF5', description: 'Implementation accepted' },
+              { name: 'documentation', color: '0075CA', description: 'Improvements or additions to documentation' },
+              { name: 'enhancement', color: 'A2EEEF', description: 'New feature or request' },
+            ];
+
+            const desiredNames = new Set(desiredLabels.map((label) => label.name));
+
+            const existingLabels = await github.paginate(github.rest.issues.listLabelsForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 100,
+            });
+
+            const existingByName = new Map(existingLabels.map((label) => [label.name, label]));
+
+            for (const label of desiredLabels) {
+              if (existingByName.has(label.name)) {
+                await github.rest.issues.updateLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description,
+                });
+              } else {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                  color: label.color,
+                  description: label.description,
+                });
+              }
+            }
+
+            for (const label of existingLabels) {
+              if (!desiredNames.has(label.name)) {
+                await github.rest.issues.deleteLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label.name,
+                });
+              }
+            }
