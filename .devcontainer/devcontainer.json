@@ -1,0 +1,24 @@
+{
+  "name": "cursed-fab devbox",
+  "dockerComposeFile": "../docker-compose.yml",
+  "service": "devbox",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "ubuntu",
+  "overrideCommand": false,
+  "containerEnv": {
+    "PATH": "/home/ubuntu/.cargo/bin:/home/ubuntu/.bun/bin:${containerEnv:PATH}"
+  },
+  "postCreateCommand": "bash -lc 'node -v && npm -v && npx -v && bun -v && rustc -V && cargo -V && opencode --version'",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      },
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "rust-lang.rust-analyzer",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}
