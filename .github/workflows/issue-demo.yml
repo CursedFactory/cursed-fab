@@ -88,6 +88,11 @@ jobs:
               response = 'OpenCode returned an empty response.';
             }
 
+            response = response
+              .replace(/[\u001B\u009B][[\]()#;?]*(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007|(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~])/g, '')
+              .replace(/\r/g, '')
+              .trim();
+
             const maxChars = 60000;
             const safeResponse = response.length > maxChars
               ? `${response.slice(0, maxChars)}\n\n...[truncated]`
