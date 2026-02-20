@@ -48,8 +48,16 @@ jobs:
             printf '%s\n' 'No issue description provided. Please summarize this issue and propose next steps.' > .tmp/issue-body.txt
           fi
 
+          if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENCODE_API_KEY:-}" ]; then
+            {
+              printf '%s\n\n' 'No model provider credentials are configured for this repository.'
+              printf '%s\n' 'Set at least one secret (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENCODE_API_KEY`) and rerun the workflow.'
+            } > .tmp/opencode-response.txt
+            exit 0
+          fi
+
           set +e
-          docker compose run --rm \
+          timeout 180s docker compose run --rm \
             -e OPENAI_API_KEY \
             -e ANTHROPIC_API_KEY \
             -e OPENCODE_API_KEY \
@@ -61,11 +69,21 @@ jobs:
 
           if [ "$exit_code" -ne 0 ]; then
             cp .tmp/opencode-response.txt .tmp/opencode-error.txt
-            {
-              printf '%s\n\n' "OpenCode invocation failed with exit code ${exit_code}."
-              printf '%s\n' 'Workflow captured logs:'
-              cat .tmp/opencode-error.txt
-            } > .tmp/opencode-response.txt
+
+            if [ "$exit_code" -eq 124 ]; then
+              {
+                printf '%s\n\n' 'OpenCode invocation timed out after 180 seconds.'
+                printf '%s\n\n' 'Confirm model provider credentials are valid and that `opencode run` can complete non-interactively in the container.'
+                printf '%s\n' 'Workflow captured logs:'
+                cat .tmp/opencode-error.txt
+              } > .tmp/opencode-response.txt
+            else
+              {
+                printf '%s\n\n' "OpenCode invocation failed with exit code ${exit_code}."
+                printf '%s\n' 'Workflow captured logs:'
+                cat .tmp/opencode-error.txt
+              } > .tmp/opencode-response.txt
+            fi
           fi
 
       - name: Post OpenCode response

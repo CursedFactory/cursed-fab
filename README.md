@@ -1,37 +1,49 @@
 # cursed-fab
-Git-host (GitLab/GitHub) based - agentic development using Issues, Actions, PRs as interface and dockerized OpenCode agents as actors. 
 
-## Dev Box
+`cursed-fab` explores Git-host (GitHub/GitLab) based agentic development where issues, pull requests, and CI workflows are the interface, and dockerized OpenCode agents are the actors.
 
-This repo now includes a Docker and Dev Container setup for agentic development.
+## Quick Start
 
-- Base image: Ubuntu 24.04 (lean package set)
-- Included tools: OpenCode CLI, Node.js (with npm/npx), Bun, Rust (rustup/cargo), and common CLI dev utilities
+This repo includes a Docker + Dev Container setup for running agent workflows in a reproducible environment.
 
-### Docker Compose
-
-Optional overrides are read from `.env` (copy from `.env.example`):
+1. Copy env defaults:
 
 ```bash
 cp .env.example .env
 ```
 
-Current overrides:
-
-- `DEVBOX_USERNAME` (default: `ubuntu`)
-- `DEVBOX_NODE_MAJOR` (default: `22`)
-
-Build and start the development container:
+2. Build and start the development container:
 
 ```bash
-docker compose up --build -d
+docker compose up --build -d devbox
 ```
 
-Open a shell inside it:
+3. Open a shell inside it:
 
 ```bash
 docker compose exec devbox bash
 ```
+
+4. Verify toolchain availability:
+
+```bash
+opencode --version
+node -v
+bun -v
+rustc -V
+```
+
+## Dev Box
+
+- Base image: Ubuntu 24.04 (lean package set)
+- Included tools: OpenCode CLI, Node.js (with npm/npx), Bun, Rust (rustup/cargo), and common CLI utilities
+
+### Environment Overrides
+
+Optional overrides are read from `.env`:
+
+- `DEVBOX_USERNAME` (default: `ubuntu`)
+- `DEVBOX_NODE_MAJOR` (default: `22`)
 
 ### Make Shortcuts
 
@@ -46,8 +58,8 @@ make devbox-down
 ### Dev Container (VS Code / compatible IDEs)
 
 Open this folder in a Dev Container and use the `devbox` service from `docker-compose.yml`.
-Dev Container currently assumes `DEVBOX_USERNAME=ubuntu`.
-The post-create step validates installs for:
+Current Dev Container defaults assume `DEVBOX_USERNAME=ubuntu`.
+The post-create step validates:
 
 - `node`, `npm`, `npx`
 - `bun`
@@ -56,7 +68,7 @@ The post-create step validates installs for:
 
 ### Bun Script Entrypoints
 
-Bun task scripts in this repo use shebang execution. Run them directly:
+Task scripts use shebang execution. Run them directly:
 
 ```bash
 scripts/devbox.sh.ts up
@@ -67,35 +79,68 @@ scripts/install.sh.ts
 scripts/install.sh.ts proto
 ```
 
+## Agentic Workflow Model
 
-## Concept Notes
+- Use GitHub/GitLab services to drive agentic development through Issues, PRs/MRs, and Actions/CI.
+- Treat issue descriptions as prompts and use labels to represent lifecycle state.
 
-- Use GitHub/GitLab services to enable agentic development
-  - Involves using their Issue, PR/MR, and Action/CI features as the interface for the agents to interact with the codebase and development process.
-- Issues act the entry point for agents, with humans/agents
-  - Treat the descr like a prompt
-  - Use labels to track current state
-    - Draft - Just created, no iteration yet
-    - Planning - Agents can now reply in the issue thread back and forth to plan out the implementation details, with the goal of creating a clear implementation plan that can be executed on.
-    - Develop - Once the plan is solidified, the issue can be moved to this state, where agents can now start creating PRs/MRs to implement the feature or fix the bug described in the issue.
-    - Review - Once the implementation is done, the issue can be moved to this state, where agents can now review the code, run tests, and provide feedback. This can involve multiple iterations of review and feedback until the implementation is solidified and ready to be merged. Moves back into Develop if changes are needed.
-    - Acccepted - Done.
-- Spawned CI actions run dockerized OpenCode agents that can read/write to the repo, comment on issues/PRs/MRs, and trigger other actions as needed. These agents can be designed to have specific roles or expertise, such as a "Code Reviewer" agent that specializes in reviewing code for best practices and potential bugs, or a "Documentation" agent that focuses on improving the documentation of the codebase
-  - Will use ocx to create the profiles for a given agent, which will determine its behavior and capabilities. For example, a "Code Reviewer" agent might have a profile that emphasizes code quality and best practices, while a "Documentation" agent might have a profile that focuses on clarity and comprehensiveness in documentation.
+### Suggested Issue Lifecycle Labels
+
+- `Draft`: issue created, no planning iteration yet.
+- `Planning`: humans and agents iterate in-thread to finalize implementation details.
+- `Develop`: implementation PRs/MRs are actively being authored.
+- `Review`: changes are validated, reviewed, and refined; move back to `Develop` if needed.
+- `Accepted`: implementation is complete and accepted.
+
+### Runtime Pattern
+
+- CI workflows run dockerized OpenCode agents that can read/write repository content and comment in issue/PR contexts.
+- Future `ocx` profiles can map specialized behavior by role (for example: reviewer, docs, implementation).
 
 ## Issue Demo Workflow
 
-The `Issue Demo` GitHub Action runs when issues are opened or edited.
+The `Issue Demo` GitHub Action runs on issue open/edit events and via manual dispatch.
 
-- It builds the project `devbox` from `docker-compose.yml`.
-- It verifies `opencode` is available inside that container.
-- It passes the issue description into `opencode run` inside the container.
-- It posts the OpenCode output back to the issue as a comment.
+- Builds the `devbox` service from `docker-compose.yml`.
+- Verifies `opencode` inside the container.
+- Passes issue text into `opencode run`.
+- Posts OpenCode output back to the issue as a comment.
 
-Optional secrets for model provider credentials:
+Model provider credential secrets:
 
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `OPENCODE_API_KEY`
 
-    
+If none are configured, the workflow posts a guidance message instead of attempting a model call.
+
+## Planning and Templates
+
+- Roadmap and pending work live in `TODO.md`.
+- Issue and PR scaffolds live in `docs/templates/`.
+- Operator runbook lives in `docs/context/github-operator-loop.md`.
+
+## GitHub CLI Loop
+
+Use this baseline loop to drive issue-to-PR delivery with agent support:
+
+1. Create or refine an issue from `docs/templates/issue.template.md`.
+2. Move the issue state label (`Draft` -> `Planning` -> `Develop` -> `Review` -> `Accepted`).
+3. Create a branch using the repository style (`vfp/agent/<topic>`).
+4. Commit with the style in `STYLE.md`.
+5. Open a PR using `docs/templates/pull_request.template.md`.
+
+Example command sequence:
+
+```bash
+gh issue create --title "Docs // Improve README and TODO flow" --body-file docs/templates/issue.template.md --label Planning
+git checkout -b vfp/agent/docs-readme-todo-flow
+git commit -m "[<issue-number>] {System} // Improve docs workflow clarity (Tags: WIP)"
+gh pr create --title "Docs // Improve README and TODO flow" --body-file docs/templates/pull_request.template.md
+```
+
+To manually run the issue demo workflow for a specific issue:
+
+```bash
+gh workflow run issue-demo.yml -f issue_number=123 -f issue_body="$(gh issue view 123 --json body -q .body)"
+```

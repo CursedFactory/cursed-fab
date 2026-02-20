@@ -1,5 +1,8 @@
 # TODO
 
+## Agent Runtime Backlog
+
+- [x] Guard issue demo workflow against missing credentials and stalled OpenCode runs
 - [ ] Setup `ocx` profiles for core agent roles and stages
 - [ ] Implement profile launcher that selects profile by action/event type and stage
   - [ ] Map issue planning flow (example: `issue_planning`)
@@ -8,3 +11,9 @@
   - [ ] Define default/fallback profile behavior for unknown events
 - [ ] Add demo workflow step for writing files through agent execution
 - [ ] Add demo workflow step for comment reply behavior in issue/PR threads
+
+## Documentation and Process
+
+- [x] Clarify README quick start and workflow model
+- [x] Document GitHub CLI loop for issue -> branch -> commit -> PR
+- [x] Add a contributor runbook for issue lifecycle operations (`gh issue`, labels, and workflow dispatch)
