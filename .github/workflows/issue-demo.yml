@@ -1,0 +1,23 @@
+name: Issue Demo
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post demo comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `Thanks for opening this issue. Demo workflow triggered for #${context.issue.number}.`
+            })
