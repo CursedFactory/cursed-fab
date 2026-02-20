@@ -101,10 +101,13 @@ scripts/install.sh.ts proto
 
 The `Issue Demo` GitHub Action runs on issue open/edit events and via manual dispatch.
 
-- Builds the `devbox` service from `docker-compose.yml`.
+- Pulls a prebuilt `devbox` image from GHCR when available.
+- Falls back to building the `devbox` service from `docker-compose.yml` if the prebuilt image is unavailable.
 - Verifies `opencode` inside the container.
 - Passes issue text into `opencode run`.
 - Posts OpenCode output back to the issue as a comment.
+
+The `Devbox Image` workflow publishes `ghcr.io/<owner>/cursed-fab-devbox:main` so issue runs can skip rebuilds.
 
 Model provider credential secrets:
 

@@ -1,5 +1,6 @@
 services:
   devbox:
+    image: ${DEVBOX_IMAGE:-cursed-fab-devbox:local}
     build:
       context: .
       dockerfile: Dockerfile

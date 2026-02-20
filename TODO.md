@@ -4,6 +4,7 @@
 
 - [x] Guard issue demo workflow against missing credentials and stalled OpenCode runs
 - [x] Add OpenRouter credential/model override path in issue demo workflow
+- [x] Prebuild devbox image in dedicated workflow and reuse it in issue-demo with build fallback
 - [ ] Setup `ocx` profiles for core agent roles and stages
 - [ ] Implement profile launcher that selects profile by action/event type and stage
   - [ ] Map issue planning flow (example: `issue_planning`)

@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   issues: write
+  packages: read
 
 jobs:
   demo:
@@ -35,8 +36,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build devbox container
-        run: docker compose build devbox
+      - name: Resolve devbox image reference
+        run: echo "DEVBOX_IMAGE=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/cursed-fab-devbox:main" >> "$GITHUB_ENV"
+
+      - name: Pull prebuilt devbox image (fallback to build)
+        run: |
+          if docker pull "$DEVBOX_IMAGE"; then
+            echo "Using prebuilt image: $DEVBOX_IMAGE"
+          else
+            echo "Prebuilt image not available; building devbox locally"
+            docker compose build devbox
+          fi
 
       - name: Verify OpenCode CLI in container
         run: docker compose run --rm devbox bash -lc 'opencode --version'
