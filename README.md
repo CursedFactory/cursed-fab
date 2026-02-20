@@ -83,4 +83,19 @@ scripts/install.sh.ts proto
 - Spawned CI actions run dockerized OpenCode agents that can read/write to the repo, comment on issues/PRs/MRs, and trigger other actions as needed. These agents can be designed to have specific roles or expertise, such as a "Code Reviewer" agent that specializes in reviewing code for best practices and potential bugs, or a "Documentation" agent that focuses on improving the documentation of the codebase
   - Will use ocx to create the profiles for a given agent, which will determine its behavior and capabilities. For example, a "Code Reviewer" agent might have a profile that emphasizes code quality and best practices, while a "Documentation" agent might have a profile that focuses on clarity and comprehensiveness in documentation.
 
+## Issue Demo Workflow
+
+The `Issue Demo` GitHub Action runs when issues are opened or edited.
+
+- It builds the project `devbox` from `docker-compose.yml`.
+- It verifies `opencode` is available inside that container.
+- It passes the issue description into `opencode run` inside the container.
+- It posts the OpenCode output back to the issue as a comment.
+
+Optional secrets for model provider credentials:
+
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `OPENCODE_API_KEY`
+
     
