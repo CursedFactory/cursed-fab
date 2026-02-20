@@ -114,6 +114,7 @@ Automation is split by event type and lifecycle stage so behavior can be customi
 - Workflow: `.github/workflows/issue-stage-develop.yml`
 - Trigger: issue labeled `Develop`
 - Behavior: creates `docs/plans/issue-<n>-develop.plan.md`, creates a branch, and opens a draft kickoff PR
+- If repository policy blocks Actions from creating PRs, workflow posts a manual `gh pr create` fallback command
 
 ### PR Stage - Implement
 
