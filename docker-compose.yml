@@ -1,0 +1,28 @@
+services:
+  devbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USERNAME: ${DEVBOX_USERNAME:-ubuntu}
+        NODE_MAJOR: ${DEVBOX_NODE_MAJOR:-22}
+    command: sleep infinity
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    environment:
+      TERM: xterm-256color
+    volumes:
+      - .:/workspace:cached
+      - npm-cache:/home/${DEVBOX_USERNAME:-ubuntu}/.npm
+      - bun-cache:/home/${DEVBOX_USERNAME:-ubuntu}/.bun/install/cache
+      - cargo-registry:/home/${DEVBOX_USERNAME:-ubuntu}/.cargo/registry
+      - cargo-git:/home/${DEVBOX_USERNAME:-ubuntu}/.cargo/git
+      - rustup-cache:/home/${DEVBOX_USERNAME:-ubuntu}/.rustup
+
+volumes:
+  npm-cache:
+  bun-cache:
+  cargo-registry:
+  cargo-git:
+  rustup-cache:
