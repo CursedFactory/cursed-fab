@@ -1,23 +1,44 @@
-name: Issue Demo
+name: Issue Reply Core
 
 on:
   workflow_dispatch:
     inputs:
       issue_number:
-        description: "Issue number to comment on"
+        description: "Issue number to reply to"
         required: true
         type: string
       issue_body:
-        description: "Issue body to pass to opencode run"
-        required: true
+        description: "Optional issue body override"
+        required: false
+        default: ""
+        type: string
+      stage:
+        description: "Lifecycle stage (Draft|Planning|Review)"
+        required: false
+        default: "Planning"
         type: string
       model:
         description: "Optional model override in provider/model format"
         required: false
         default: ""
         type: string
-  issues:
-    types: [opened, edited]
+  workflow_call:
+    inputs:
+      issue_number:
+        required: true
+        type: string
+      issue_body:
+        required: false
+        default: ""
+        type: string
+      stage:
+        required: false
+        default: "Planning"
+        type: string
+      model:
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -25,12 +46,12 @@ permissions:
   packages: read
 
 jobs:
-  demo:
+  reply:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'issues' || github.event.issue.pull_request == null }}
     env:
-      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
-      ISSUE_BODY: ${{ github.event.issue.body || inputs.issue_body }}
+      ISSUE_NUMBER: ${{ inputs.issue_number }}
+      ISSUE_BODY_OVERRIDE: ${{ inputs.issue_body }}
+      ISSUE_STAGE: ${{ inputs.stage || 'Planning' }}
       OPENCODE_MODEL: ${{ inputs.model || vars.OPENCODE_MODEL || '' }}
     steps:
       - name: Checkout repository
@@ -48,10 +69,79 @@ jobs:
             docker compose build devbox
           fi
 
-      - name: Verify OpenCode CLI in container
-        run: docker compose run --rm devbox bash -lc 'opencode --version'
+      - name: Verify OpenCode CLI in image
+        run: docker run --rm --entrypoint bash "$DEVBOX_IMAGE" -lc 'opencode --version'
 
-      - name: Generate OpenCode response from issue body
+      - name: Build issue context prompt
+        id: prompt
+        uses: actions/github-script@v7
+        env:
+          ISSUE_NUMBER: ${{ env.ISSUE_NUMBER }}
+          ISSUE_STAGE: ${{ env.ISSUE_STAGE }}
+          ISSUE_BODY_OVERRIDE: ${{ env.ISSUE_BODY_OVERRIDE }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const stage = process.env.ISSUE_STAGE || 'Planning';
+            const overrideBody = (process.env.ISSUE_BODY_OVERRIDE || '').trim();
+
+            const { data: issue } = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+            });
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            });
+
+            const threadHighlights = comments
+              .filter((comment) => comment.body && comment.body.trim())
+              .slice(-8)
+              .map((comment) => {
+                const condensed = comment.body.replace(/\s+/g, ' ').trim();
+                const snippet = condensed.length > 220 ? `${condensed.slice(0, 220)}...` : condensed;
+                return `- @${comment.user.login}: ${snippet}`;
+              });
+
+            const replyContractPath = path.join(process.cwd(), 'REPLY.md');
+            let replyContract = '';
+            if (fs.existsSync(replyContractPath)) {
+              replyContract = fs.readFileSync(replyContractPath, 'utf8').trim();
+            }
+
+            const issueBody = overrideBody || (issue.body || '').trim() || 'No issue description provided.';
+            const prompt = [
+              `You are replying in a GitHub issue thread for stage: ${stage}.`,
+              'You MUST only provide a thread reply. Do not attempt repository edits or patch generation.',
+              '',
+              `Issue #${issue.number}: ${issue.title}`,
+              `Issue URL: ${issue.html_url}`,
+              '',
+              'Issue description:',
+              issueBody,
+              '',
+              'Recent thread highlights:',
+              threadHighlights.length > 0 ? threadHighlights.join('\n') : '- No comments yet.',
+              '',
+              'Reply formatting contract:',
+              replyContract || '- Keep response concise and actionable.',
+            ].join('\n');
+
+            fs.mkdirSync('.tmp', { recursive: true });
+            fs.writeFileSync('.tmp/issue-prompt.txt', `${prompt}\n`, 'utf8');
+
+            core.setOutput('issue_title', issue.title);
+            core.setOutput('issue_url', issue.html_url);
+
+      - name: Generate issue reply with OpenCode
+        id: run
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -59,18 +149,12 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENCODE_MODEL: ${{ env.OPENCODE_MODEL }}
         run: |
-          mkdir -p .tmp
-          printf '%s\n' "$ISSUE_BODY" > .tmp/issue-body.txt
-
-          if [ ! -s .tmp/issue-body.txt ]; then
-            printf '%s\n' 'No issue description provided. Please summarize this issue and propose next steps.' > .tmp/issue-body.txt
-          fi
-
           if [ -z "${OPENAI_API_KEY:-}" ] && [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${OPENCODE_API_KEY:-}" ] && [ -z "${OPENROUTER_API_KEY:-}" ]; then
             {
               printf '%s\n\n' 'No model provider credentials are configured for this repository.'
               printf '%s\n' 'Set at least one secret (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENCODE_API_KEY`, or `OPENROUTER_API_KEY`) and rerun the workflow.'
             } > .tmp/opencode-response.txt
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -79,67 +163,103 @@ jobs:
               printf '%s\n\n' "OpenCode model override requires OpenRouter credentials: ${OPENCODE_MODEL}"
               printf '%s\n' 'Set `OPENROUTER_API_KEY` or choose a non-OpenRouter model override.'
             } > .tmp/opencode-response.txt
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           set +e
-          timeout 180s docker compose run --rm \
+          timeout 180s docker run --rm \
+            -v "$PWD:/workspace:ro" \
+            -w /workspace \
             -e OPENAI_API_KEY \
             -e ANTHROPIC_API_KEY \
             -e OPENCODE_API_KEY \
             -e OPENROUTER_API_KEY \
             -e OPENCODE_MODEL \
-            devbox \
-            bash -lc 'ISSUE_DESC="$(cat /workspace/.tmp/issue-body.txt)" && if [ -n "${OPENCODE_MODEL:-}" ]; then opencode run --model "$OPENCODE_MODEL" "$ISSUE_DESC"; else opencode run "$ISSUE_DESC"; fi' \
-            > .tmp/opencode-response.txt 2>&1
+            "$DEVBOX_IMAGE" \
+            bash -lc 'PROMPT="$(cat /workspace/.tmp/issue-prompt.txt)" && if [ -n "${OPENCODE_MODEL:-}" ]; then opencode run --format json --model "$OPENCODE_MODEL" "$PROMPT"; else opencode run --format json "$PROMPT"; fi' \
+            > .tmp/opencode-events.jsonl 2>&1
           exit_code=$?
           set -e
 
           if [ "$exit_code" -ne 0 ]; then
-            cp .tmp/opencode-response.txt .tmp/opencode-error.txt
-
             if [ "$exit_code" -eq 124 ]; then
-              {
-                printf '%s\n\n' 'OpenCode invocation timed out after 180 seconds.'
-                printf '%s\n\n' 'Confirm model provider credentials are valid and that `opencode run` can complete non-interactively in the container.'
-                printf '%s\n' 'Workflow captured logs:'
-                cat .tmp/opencode-error.txt
-              } > .tmp/opencode-response.txt
+              printf '%s\n' 'OpenCode reply generation timed out after 180 seconds.' > .tmp/opencode-response.txt
             else
-              {
-                printf '%s\n\n' "OpenCode invocation failed with exit code ${exit_code}."
-                printf '%s\n' 'Workflow captured logs:'
-                cat .tmp/opencode-error.txt
-              } > .tmp/opencode-response.txt
+              printf '%s\n' "OpenCode reply generation failed with exit code ${exit_code}." > .tmp/opencode-response.txt
             fi
           fi
 
-      - name: Post OpenCode response
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Extract clean reply text
+        run: |
+          if [ -f .tmp/opencode-response.txt ] && [ -s .tmp/opencode-response.txt ]; then
+            exit 0
+          fi
+
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const sourcePath = '.tmp/opencode-events.jsonl';
+          const targetPath = '.tmp/opencode-response.txt';
+
+          let textChunks = [];
+          if (fs.existsSync(sourcePath)) {
+            const lines = fs.readFileSync(sourcePath, 'utf8').split('\n').filter(Boolean);
+            for (const line of lines) {
+              try {
+                const event = JSON.parse(line);
+                if (event.type === 'text') {
+                  const text = (event.part && event.part.text ? event.part.text : '').trim();
+                  if (text) {
+                    textChunks.push(text);
+                  }
+                }
+              } catch {
+                // Ignore non-JSON lines in this parsing pass.
+              }
+            }
+          }
+
+          let reply = textChunks.join('\n\n').trim();
+          if (!reply) {
+            reply = 'OpenCode returned no structured reply content.';
+          }
+
+          fs.writeFileSync(targetPath, `${reply}\n`, 'utf8');
+          NODE
+
+      - name: Post formatted issue reply
         uses: actions/github-script@v7
         env:
           ISSUE_NUMBER: ${{ env.ISSUE_NUMBER }}
+          ISSUE_STAGE: ${{ env.ISSUE_STAGE }}
+          ISSUE_TITLE: ${{ steps.prompt.outputs.issue_title }}
+          ISSUE_URL: ${{ steps.prompt.outputs.issue_url }}
+          OPENCODE_MODEL: ${{ env.OPENCODE_MODEL }}
         with:
           script: |
             const fs = require('node:fs');
+
             const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const stage = process.env.ISSUE_STAGE || 'Planning';
+            const issueTitle = process.env.ISSUE_TITLE || '';
+            const issueUrl = process.env.ISSUE_URL || '';
+            const model = process.env.OPENCODE_MODEL || 'default';
 
             let response = '';
             try {
               response = fs.readFileSync('.tmp/opencode-response.txt', 'utf8').trim();
             } catch {
-              response = 'No response file was generated by the workflow.';
+              response = 'No reply text was generated by the workflow.';
             }
 
             if (!response) {
-              response = 'OpenCode returned an empty response.';
+              response = 'OpenCode returned an empty reply.';
             }
 
-            response = response
-              .replace(/[\u001B\u009B][[\]()#;?]*(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007|(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~])/g, '')
-              .replace(/\r/g, '')
-              .trim();
-
-            const maxChars = 60000;
+            const maxChars = 58000;
             const safeResponse = response.length > maxChars
               ? `${response.slice(0, maxChars)}\n\n...[truncated]`
               : response;
@@ -149,10 +269,13 @@ jobs:
               repo: context.repo.repo,
               issue_number: issueNumber,
               body: [
-                `OpenCode demo response for #${issueNumber}:`,
+                '### Stage Update',
+                `**Stage:** \`${stage}\``,
+                `**Issue:** [#${issueNumber} ${issueTitle}](${issueUrl})`,
                 '',
-                '```text',
                 safeResponse,
-                '```'
-              ].join('\n')
+                '',
+                '---',
+                `_Model: \`${model}\` · Workflow: \`issue-demo.yml\`_`,
+              ].join('\n'),
             });

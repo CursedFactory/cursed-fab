@@ -1,0 +1,29 @@
+name: Issue Stage - Thread Reply
+
+on:
+  issues:
+    types: [opened, edited, reopened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+  packages: read
+
+jobs:
+  reply:
+    if: >
+      github.event.issue.pull_request == null &&
+      (
+        github.event.action == 'opened' ||
+        contains(github.event.issue.labels.*.name, 'Draft') ||
+        contains(github.event.issue.labels.*.name, 'Planning') ||
+        contains(github.event.issue.labels.*.name, 'Review')
+      ) &&
+      !contains(github.event.issue.labels.*.name, 'Develop') &&
+      !contains(github.event.issue.labels.*.name, 'Accepted')
+    uses: ./.github/workflows/issue-demo.yml
+    secrets: inherit
+    with:
+      issue_number: ${{ github.event.issue.number }}
+      issue_body: ${{ github.event.issue.body || '' }}
+      stage: ${{ contains(github.event.issue.labels.*.name, 'Review') && 'Review' || contains(github.event.issue.labels.*.name, 'Planning') && 'Planning' || 'Draft' }}
