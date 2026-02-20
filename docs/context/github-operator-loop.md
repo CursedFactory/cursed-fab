@@ -46,6 +46,14 @@ gh run list --workflow devbox-image.yml --limit 5
 gh workflow run label-governance.yml
 ```
 
+6. Optional: provide a token for PR creation in restricted repositories:
+
+```bash
+gh secret set AUTOMATION_PAT
+```
+
+Use this when repository policy blocks PR creation with the default `GITHUB_TOKEN`.
+
 ## Stage Workflows
 
 ### 1) Draft Intake + Planning/Review Replies

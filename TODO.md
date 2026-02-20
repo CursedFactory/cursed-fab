@@ -10,6 +10,7 @@
 - [x] Add PR command workflow (`/agent-implement`) that can push implementation commits
 - [x] Improve issue reply formatting with structured prompt contract (`REPLY.md`) and clean comment output
 - [x] Remove unused default labels and add label governance workflow
+- [x] Add develop kickoff fallback path when workflow token cannot create PRs
 - [ ] Setup `ocx` profiles for core agent roles and stages
 - [ ] Implement profile launcher that selects profile by action/event type and stage
   - [ ] Map issue planning flow (example: `issue_planning`)
