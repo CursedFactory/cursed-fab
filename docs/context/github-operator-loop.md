@@ -22,6 +22,16 @@ gh label create Accepted --description "Implementation accepted" --color C5DEF5
 
 If labels already exist, `gh` will return an error for that label; this is safe to ignore.
 
+3. Configure at least one model credential secret if you want model-generated issue replies:
+
+```bash
+gh secret set OPENAI_API_KEY
+# or
+gh secret set ANTHROPIC_API_KEY
+# or
+gh secret set OPENCODE_API_KEY
+```
+
 ## Issue to Branch
 
 1. Create an issue from template:

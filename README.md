@@ -106,11 +106,13 @@ The `Issue Demo` GitHub Action runs on issue open/edit events and via manual dis
 - Passes issue text into `opencode run`.
 - Posts OpenCode output back to the issue as a comment.
 
-Optional secrets for model provider credentials:
+Model provider credential secrets:
 
 - `OPENAI_API_KEY`
 - `ANTHROPIC_API_KEY`
 - `OPENCODE_API_KEY`
+
+If none are configured, the workflow posts a guidance message instead of attempting a model call.
 
 ## Planning and Templates
 
