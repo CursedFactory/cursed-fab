@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   issues: write
+  packages: read
 
 jobs:
   demo:
@@ -31,12 +32,19 @@ jobs:
       ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
       ISSUE_BODY: ${{ github.event.issue.body || inputs.issue_body }}
       OPENCODE_MODEL: ${{ inputs.model || vars.OPENCODE_MODEL || '' }}
+      DEVBOX_IMAGE: ghcr.io/${{ github.repository_owner }}/cursed-fab-devbox:main
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build devbox container
-        run: docker compose build devbox
+      - name: Pull prebuilt devbox image (fallback to build)
+        run: |
+          if docker pull "$DEVBOX_IMAGE"; then
+            echo "Using prebuilt image: $DEVBOX_IMAGE"
+          else
+            echo "Prebuilt image not available; building devbox locally"
+            docker compose build devbox
+          fi
 
       - name: Verify OpenCode CLI in container
         run: docker compose run --rm devbox bash -lc 'opencode --version'

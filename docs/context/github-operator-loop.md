@@ -45,6 +45,13 @@ gh api --method POST repos/CursedFactory/cursed-fab/actions/variables \
     -f value='openrouter/openai/gpt-5-mini'
 ```
 
+5. Optional: prebuild the devbox image used by issue workflows:
+
+```bash
+gh workflow run devbox-image.yml
+gh run list --workflow devbox-image.yml --limit 5
+```
+
 ## Issue to Branch
 
 1. Create an issue from template:
@@ -116,6 +123,12 @@ Inspect the latest runs:
 
 ```bash
 gh run list --workflow issue-demo.yml --limit 5
+```
+
+If issue runs are rebuilding too often, refresh the prebuilt image:
+
+```bash
+gh workflow run devbox-image.yml
 ```
 
 ## Merge and Close
