@@ -178,13 +178,14 @@ jobs:
             -u "$(id -u):$(id -g)" \
             -v "$PWD:/workspace" \
             -w /workspace \
+            -e HOME=/tmp/opencode-home \
             -e OPENAI_API_KEY \
             -e ANTHROPIC_API_KEY \
             -e OPENCODE_API_KEY \
             -e OPENROUTER_API_KEY \
             -e OPENCODE_MODEL \
             "$DEVBOX_IMAGE" \
-            bash -lc 'PROMPT="$(cat /workspace/.tmp/pr-implement-prompt.txt)" && if [ -n "${OPENCODE_MODEL:-}" ]; then opencode run --format json --model "$OPENCODE_MODEL" "$PROMPT"; else opencode run --format json "$PROMPT"; fi' \
+            bash -lc 'mkdir -p "$HOME" && PROMPT="$(cat /workspace/.tmp/pr-implement-prompt.txt)" && if [ -n "${OPENCODE_MODEL:-}" ]; then opencode run --format json --model "$OPENCODE_MODEL" "$PROMPT"; else opencode run --format json "$PROMPT"; fi' \
             > .tmp/opencode-events.jsonl 2>&1
           exit_code=$?
           set -e

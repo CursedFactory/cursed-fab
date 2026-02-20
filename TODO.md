@@ -11,6 +11,7 @@
 - [x] Improve issue reply formatting with structured prompt contract (`REPLY.md`) and clean comment output
 - [x] Remove unused default labels and add label governance workflow
 - [x] Add develop kickoff fallback path when workflow token cannot create PRs
+- [x] Fix PR implementation container HOME path when running under mapped UID
 - [ ] Setup `ocx` profiles for core agent roles and stages
 - [ ] Implement profile launcher that selects profile by action/event type and stage
   - [ ] Map issue planning flow (example: `issue_planning`)
